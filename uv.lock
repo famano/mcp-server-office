@@ -200,7 +200,7 @@ cli = [
 [[package]]
 name = "mcp-server-office"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "mcp", extra = ["cli"] },
     { name = "python-docx" },

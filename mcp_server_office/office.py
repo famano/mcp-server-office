@@ -11,8 +11,10 @@ from mcp import types
 server = Server("office-server")
 
 async def validate_path(path: str) -> bool:
+    if not os.path.isabs(path):
+        raise ValueError(f"Not a absolute path: {path}")
     if not os.path.isfile(path):
-        return False
+        raise ValueError(f"File not found: {path}")
     elif path.endswith(".docx"):
         return True
     else:
@@ -40,20 +42,22 @@ async def read_docx(path: str) -> str:
     document = Document(path)
     content = []
 
-    # Process paragraphs
-    for paragraph in document.paragraphs:
-        if paragraph.text.strip():
-            content.append(paragraph.text)
-    
-    # Process tables
-    for table in document.tables:
-        table_text = extract_table_text(table)
-        content.append(f"[Table]\n{table_text}")
-    
-    # Process inline shapes (images)
-    for paragraph in document.paragraphs:
-        if paragraph._element.findall('.//w:drawing', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
-            content.append("[Image]")
+    # Process all elements in order
+    for element in document._body._body:
+        # Process paragraph
+        if element.tag.endswith('p'):
+            paragraph = document.paragraphs[len([p for p in content if not p.startswith('[Table]') and not p == '[Image]'])]
+            # Check for image
+            if paragraph._element.findall('.//w:drawing', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
+                content.append("[Image]")
+            # Check for text
+            elif paragraph.text.strip():
+                content.append(paragraph.text)
+        # Process table
+        elif element.tag.endswith('tbl'):
+            table = document.tables[len([t for t in content if t.startswith('[Table]')])]
+            table_text = extract_table_text(table)
+            content.append(f"[Table]\n{table_text}")
 
     return "\n\n".join(content)
 
@@ -141,7 +145,10 @@ async def list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"}
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to target file",
+                    }
                 },
                 "required": ["path"]
             }
@@ -150,14 +157,22 @@ async def list_tools() -> list[types.Tool]:
             name="write_docx",
             description=(
                 "Create a new docx file with given content."
-                "Two line breaks in content represent new paragraph."
-                "Table should starts with [Table], and separated with '|'."
+                "Editing exisiting docx file with this tool is not recomended."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
-                    "content": {"type": "string"}
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to target file. It should be under your current working directory.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": (
+                            "Content to write to the file. Two line breaks in content represent new paragraph."
+                            "Table should starts with [Table], and separated with '|'."
+                        ),
+                    }
                 },
                 "required": ["path", "content"]
             }
@@ -166,20 +181,39 @@ async def list_tools() -> list[types.Tool]:
             name="edit_docx",
             description=(
                 "Make multiple text replacements in a docx file. Accepts a list of search/replace pairs "
-                "and applies them sequentially. Returns a git-style diff showing the changes made. "
-                "Only works within allowed directories."
+                "and applies them sequentially. Since this tool is intended to edit a single part of document,"
+                "each search should matches exact part of document. Note each search matches only once."
+                "Returns a git-style diff showing the changes made. Only works within allowed directories."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string"},
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to file to edit. It should be under your current working directory."
+                    },
                     "edits": {
                         "type": "array",
+                        "description": "Sequence of edit.",
                         "items": {
                             "type": "object",
                             "properties": {
-                                "search": {"type": "string"},
-                                "replace": {"type": "string"}
+                                "search": {
+                                    "type": "string",
+                                    "description": (
+                                        "search string to find single part of the document."
+                                        "This should match exact part of document. Search string should unique in document and concise."
+                                        "Note search string matches only once."
+                                    )
+                                },
+                                "replace": {
+                                    "type": "string",
+                                    "description": (
+                                        "replacement of search seach string. Two line breaks in content represent new paragraph."
+                                        "Table should starts with [Table], and separated with '|'."
+                                        "Empty string replesents deletion."
+                                    )
+                                }
                             },
                             "required": ["search", "replace"]
                         }

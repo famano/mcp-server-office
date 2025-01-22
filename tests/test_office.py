@@ -1,6 +1,6 @@
 import os
 import pytest
-from office import validate_path, read_docx, write_docx, edit_docx, extract_table_text
+from mcp_server_office.office import validate_path, read_docx, write_docx, edit_docx, extract_table_text
 from docx import Document
 from docx.table import Table
 
@@ -28,14 +28,16 @@ def sample_docx():
 @pytest.mark.asyncio
 async def test_validate_path(sample_docx):
     """Test path validation."""
-    assert await validate_path(sample_docx) == True
-    assert await validate_path("nonexistent.docx") == False
-    assert await validate_path("test.txt") == False
+    assert await validate_path(os.path.abspath(sample_docx)) == True
+    with pytest.raises(ValueError):
+        await validate_path(sample_docx) 
+    with pytest.raises(ValueError):
+        await validate_path("nonexistent.docx")
 
 @pytest.mark.asyncio
 async def test_read_docx(sample_docx):
     """Test reading docx file."""
-    content = await read_docx(sample_docx)
+    content = await read_docx(os.path.abspath(sample_docx))
     assert "Hello World" in content
     assert "Goodbye World" in content
     assert "[Table]" in content
@@ -74,14 +76,16 @@ async def test_write_docx():
 
 @pytest.mark.asyncio
 async def test_edit_docx(sample_docx):
+    abs_sample_docx = os.path.abspath(sample_docx)
+    
     """Test editing docx file."""
     # Test single edit
-    result = await edit_docx(sample_docx, [{"search": "Hello", "replace": "Hi"}])
+    result = await edit_docx(abs_sample_docx, [{"search": "Hello", "replace": "Hi"}])
     assert "Hello World" in result["original"]
     assert "Hi World" in result["modified"]
     
     # Test multiple edits
-    result = await edit_docx(sample_docx, [
+    result = await edit_docx(abs_sample_docx, [
         {"search": "Hi", "replace": "Hellow"},
         {"search": "World", "replace": "Everyone"}
     ])
@@ -90,12 +94,12 @@ async def test_edit_docx(sample_docx):
     
     # Test non-existent text
     with pytest.raises(ValueError) as exc_info:
-        await edit_docx(sample_docx, [{"search": "NonexistentText", "replace": "NewText"}])
+        await edit_docx(abs_sample_docx, [{"search": "NonexistentText", "replace": "NewText"}])
     assert "Search text not found: NonexistentText" in str(exc_info.value)
     
     # Test multiple edits with one non-existent
     with pytest.raises(ValueError) as exc_info:
-        await edit_docx(sample_docx, [
+        await edit_docx(abs_sample_docx, [
             {"search": "Hello", "replace": "Hi"},
             {"search": "NonexistentText", "replace": "NewText"}
         ])
