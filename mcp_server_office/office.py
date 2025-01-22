@@ -42,11 +42,15 @@ async def read_docx(path: str) -> str:
     document = Document(path)
     content = []
 
+    paragraph_index = 0
+    table_index = 0
+    
     # Process all elements in order
     for element in document._body._body:
         # Process paragraph
         if element.tag.endswith('p'):
-            paragraph = document.paragraphs[len([p for p in content if not p.startswith('[Table]') and not p == '[Image]'])]
+            paragraph = document.paragraphs[paragraph_index]
+            paragraph_index += 1
             # Check for image
             if paragraph._element.findall('.//w:drawing', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
                 content.append("[Image]")
@@ -55,7 +59,8 @@ async def read_docx(path: str) -> str:
                 content.append(paragraph.text)
         # Process table
         elif element.tag.endswith('tbl'):
-            table = document.tables[len([t for t in content if t.startswith('[Table]')])]
+            table = document.tables[table_index]
+            table_index += 1
             table_text = extract_table_text(table)
             content.append(f"[Table]\n{table_text}")
 
