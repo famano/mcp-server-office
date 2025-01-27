@@ -1,13 +1,16 @@
 import os
-from typing import Dict
+from typing import Dict, Optional, List
 from docx import Document
 from docx.shared import Inches
 from docx.table import Table
+from docx.oxml import OxmlElement
+from docx.oxml.shared import qn
 from mcp.server.lowlevel import Server, NotificationOptions
 from mcp.server.stdio import stdio_server
 from mcp.server.models import InitializationOptions
 from mcp import types
 import difflib
+from docx2python import docx2python
 
 server = Server("office-server")
 
@@ -29,13 +32,36 @@ def extract_table_text(table: Table) -> str:
         rows.append(" | ".join(cells))
     return "\n".join(rows)
 
+def process_track_changes(element: OxmlElement) -> str:
+    """Process track changes in a paragraph element."""
+    text = ""
+    for child in element:
+        if child.tag.endswith('r'):  # Normal run
+            if child.text:
+                text += child.text
+        elif child.tag.endswith('del'):  # Deletion
+            deleted_text = ""
+            for run in child:
+                if run.text:
+                    deleted_text += run.text
+            if deleted_text:
+                text += f"[削除: {deleted_text}]"
+        elif child.tag.endswith('ins'):  # Insertion
+            inserted_text = ""
+            for run in child:
+                if run.text:
+                    inserted_text += run.text
+            if inserted_text:
+                text += f"[追加: {inserted_text}]"
+    return text
+
 async def read_docx(path: str) -> str:
-    """Read docx file as text including tables.
+    """Read docx file as text including tables and track changes.
     
     Args:
         path: relative path to target docx file
     Returns:
-        str: Text representation of the document including tables
+        str: Text representation of the document including tables and track changes
     """
     if not await validate_path(path):
         raise ValueError(f"Not a docx file: {path}")
@@ -55,9 +81,11 @@ async def read_docx(path: str) -> str:
             # Check for image
             if paragraph._element.findall('.//w:drawing', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
                 content.append("[Image]")
-            # Check for text
-            elif paragraph.text.strip():
-                content.append(paragraph.text)
+            # Check for track changes and text
+            else:
+                text = process_track_changes(paragraph._element)
+                if text.strip():
+                    content.append(text)
         # Process table
         elif element.tag.endswith('tbl'):
             table = document.tables[table_index]
@@ -99,39 +127,56 @@ async def write_docx(path: str, content: str) -> None:
     
     document.save(path)
 
-async def edit_docx(path: str, edits: list[Dict[str, str]]) -> Dict[str, str]:
-    """Edit docx file by replacing multiple text occurrences.
+async def edit_docx(path: str, edits: list[Dict[str, str]]) -> str:
+    """Edit docx file by replacing multiple text occurrences while preserving track changes.
     
     Args:
         path: path to target docx file
         edits: list of dictionaries containing 'search' and 'replace' pairs
             [{'search': 'text to find', 'replace': 'text to replace with'}, ...]
     Returns:
-        dict: Containing original and modified text
+        str: A git-style diff showing the changes made
     """
     if not await validate_path(path):
         raise ValueError(f"Not a docx file: {path}")
     
-    # Read original content
+    # Read original content with track changes
     original = await read_docx(path)
-    modified = original
     
-    # Apply all edits sequentially
+    # Create a new document for modification
+    doc = Document(path)
     not_found = []
+    
+    # Apply edits while preserving track changes
     for edit in edits:
         search = edit['search']
         replace = edit['replace']
-        if search not in modified:
+        found = False
+        
+        for paragraph in doc.paragraphs:
+            if search in paragraph.text:
+                # Create new paragraph with track changes
+                new_text = paragraph.text.replace(search, replace)
+                # Clear existing runs
+                for run in paragraph.runs:
+                    run._element.getparent().remove(run._element)
+                # Add new run with modified text
+                run = paragraph._element.add_r()
+                run.text = new_text
+                found = True
+                break
+        
+        if not found:
             not_found.append(search)
-            continue
-        modified = modified.replace(search, replace)
     
     if not_found:
         raise ValueError(f"Search text not found: {', '.join(not_found)}")
     
-    # Write modified content to file
-    await write_docx(path, modified)
+    # Save modifications
+    doc.save(path)
     
+    # Read modified content and create diff
+    modified = await read_docx(path)
     result = "\n".join([line for line in difflib.unified_diff(original.split("\n"), modified.split("\n"))])
     return result
 

@@ -3,6 +3,33 @@ import pytest
 from mcp_server_office.office import validate_path, read_docx, write_docx, edit_docx, extract_table_text
 from docx import Document
 from docx.table import Table
+from docx.oxml.shared import qn
+
+@pytest.fixture
+def sample_docx_with_track_changes():
+    """Create a sample docx file with track changes for testing."""
+    path = "test_track_changes.docx"
+    doc = Document()
+    paragraph = doc.add_paragraph()
+    
+    # Add text with track changes
+    run = paragraph._element.add_r()
+    run.text = "Original"
+    
+    # Add deletion
+    deleted = paragraph._element.add_del()
+    deleted_run = deleted.add_r()
+    deleted_run.text = " deleted"
+    
+    # Add insertion
+    inserted = paragraph._element.add_ins()
+    inserted_run = inserted.add_r()
+    inserted_run.text = " inserted"
+    
+    doc.save(path)
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
 
 @pytest.fixture
 def sample_docx():
@@ -35,6 +62,13 @@ async def test_validate_path(sample_docx):
         await validate_path("nonexistent.docx")
 
 @pytest.mark.asyncio
+async def test_read_docx_with_track_changes(sample_docx_with_track_changes):
+    """Test reading docx file with track changes."""
+    content = await read_docx(os.path.abspath(sample_docx_with_track_changes))
+    assert "Original" in content
+    assert "[削除: deleted]" in content
+    assert "[追加: inserted]" in content
+
 async def test_read_docx(sample_docx):
     """Test reading docx file."""
     content = await read_docx(os.path.abspath(sample_docx))
@@ -75,6 +109,19 @@ async def test_write_docx():
             os.remove(test_path)
 
 @pytest.mark.asyncio
+async def test_edit_docx_with_track_changes(sample_docx_with_track_changes):
+    """Test editing docx file with track changes."""
+    abs_path = os.path.abspath(sample_docx_with_track_changes)
+    result = await edit_docx(abs_path, [{"search": "Original", "replace": "Modified"}])
+    assert "-Original" in result
+    assert "+Modified" in result
+    
+    # Verify track changes are preserved
+    content = await read_docx(abs_path)
+    assert "Modified" in content
+    assert "[削除: deleted]" in content
+    assert "[追加: inserted]" in content
+
 async def test_edit_docx(sample_docx):
     abs_sample_docx = os.path.abspath(sample_docx)
     
