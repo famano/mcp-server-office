@@ -4,6 +4,7 @@ from mcp_server_office.office import validate_path, read_docx, write_docx, edit_
 from docx import Document
 from docx.table import Table
 from docx.oxml.shared import qn
+from docx.oxml import OxmlElement
 
 @pytest.fixture
 def sample_docx_with_track_changes():
@@ -13,18 +14,33 @@ def sample_docx_with_track_changes():
     paragraph = doc.add_paragraph()
     
     # Add text with track changes
-    run = paragraph._element.add_r()
-    run.text = "Original"
+    run = OxmlElement('w:r')
+    text = OxmlElement('w:t')
+    text.text = "Original"
+    run.append(text)
+    paragraph._element.append(run)
     
     # Add deletion
-    deleted = paragraph._element.add_del()
-    deleted_run = deleted.add_r()
-    deleted_run.text = " deleted"
+    del_element = OxmlElement('w:del')
+    del_element.set(qn('w:author'), 'Test Author')
+    del_element.set(qn('w:date'), '2024-01-27T00:00:00Z')
+    del_run = OxmlElement('w:r')
+    del_text = OxmlElement('w:delText')
+    del_text.text = " deleted"
+    del_run.append(del_text)
+    del_element.append(del_run)
+    paragraph._element.append(del_element)
     
     # Add insertion
-    inserted = paragraph._element.add_ins()
-    inserted_run = inserted.add_r()
-    inserted_run.text = " inserted"
+    ins_element = OxmlElement('w:ins')
+    ins_element.set(qn('w:author'), 'Test Author')
+    ins_element.set(qn('w:date'), '2024-01-27T00:00:00Z')
+    ins_run = OxmlElement('w:r')
+    ins_text = OxmlElement('w:t')
+    ins_text.text = " inserted"
+    ins_run.append(ins_text)
+    ins_element.append(ins_run)
+    paragraph._element.append(ins_element)
     
     doc.save(path)
     yield path
