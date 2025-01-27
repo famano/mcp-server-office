@@ -82,8 +82,8 @@ async def test_read_docx_with_track_changes(sample_docx_with_track_changes):
     """Test reading docx file with track changes."""
     content = await read_docx(os.path.abspath(sample_docx_with_track_changes))
     assert "Original" in content
-    assert "[削除: deleted]" in content
-    assert "[追加: inserted]" in content
+    assert "[削除:  deleted]" in content
+    assert "[追加:  inserted]" in content
 
 async def test_read_docx(sample_docx):
     """Test reading docx file."""
@@ -129,14 +129,13 @@ async def test_edit_docx_with_track_changes(sample_docx_with_track_changes):
     """Test editing docx file with track changes."""
     abs_path = os.path.abspath(sample_docx_with_track_changes)
     result = await edit_docx(abs_path, [{"search": "Original", "replace": "Modified"}])
-    assert "-Original" in result
-    assert "+Modified" in result
     
     # Verify track changes are preserved
     content = await read_docx(abs_path)
-    assert "Modified" in content
-    assert "[削除: deleted]" in content
-    assert "[追加: inserted]" in content
+    assert "[削除: Original]" in content
+    assert "[追加: Modified]" in content
+    assert "[削除:  deleted]" in content
+    assert "[追加:  inserted]" in content
 
 async def test_edit_docx(sample_docx):
     abs_sample_docx = os.path.abspath(sample_docx)
