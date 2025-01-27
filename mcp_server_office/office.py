@@ -11,6 +11,8 @@ from mcp.server.models import InitializationOptions
 from mcp import types
 import difflib
 from docx2python import docx2python
+from datetime import datetime
+from mcp_server_office.tools import READ_DOCX, WRITE_DOCX, EDIT_DOCX
 
 server = Server("office-server")
 
@@ -45,13 +47,13 @@ def process_track_changes(element: OxmlElement) -> str:
             for run in child.findall('.//w:delText', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
                 deleted_text += run.text if run.text else ""
             if deleted_text:
-                text += f"[削除: {deleted_text}]"
+                text += f"[delete: {deleted_text}]"
         elif child.tag.endswith('ins'):  # Insertion
             inserted_text = ""
             for run in child.findall('.//w:t', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
                 inserted_text += run.text if run.text else ""
             if inserted_text:
-                text += f"[追加: {inserted_text}]"
+                text += f"[insert: {inserted_text}]"
     return text
 
 async def read_docx(path: str) -> str:
@@ -160,7 +162,7 @@ async def edit_docx(path: str, edits: list[Dict[str, str]]) -> str:
                         # Create deletion for original text
                         del_element = OxmlElement('w:del')
                         del_element.set(qn('w:author'), 'Editor')
-                        del_element.set(qn('w:date'), '2024-01-27T00:00:00Z')
+                        del_element.set(qn('w:date'), str(datetime.now()))
                         del_run = OxmlElement('w:r')
                         del_text = OxmlElement('w:delText')
                         del_text.text = run.text
@@ -170,7 +172,7 @@ async def edit_docx(path: str, edits: list[Dict[str, str]]) -> str:
                         # Create insertion for new text
                         ins_element = OxmlElement('w:ins')
                         ins_element.set(qn('w:author'), 'Editor')
-                        ins_element.set(qn('w:date'), '2024-01-27T00:00:00Z')
+                        ins_element.set(qn('w:date'), str(datetime.now()))
                         ins_run = OxmlElement('w:r')
                         ins_text = OxmlElement('w:t')
                         ins_text.text = run.text.replace(search, replace)
@@ -202,99 +204,7 @@ async def edit_docx(path: str, edits: list[Dict[str, str]]) -> str:
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    return [
-        types.Tool(
-            name="read_docx",
-            description=(
-                "Read complete contents of a docx file including tables and images."
-                "Use this tool when you want to read file endswith '.docx'."
-                "Paragraphs are separated with two line breaks."
-                "This tool convert images into placeholder [Image]."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute path to target file",
-                    }
-                },
-                "required": ["path"]
-            }
-        ),
-        types.Tool(
-            name="write_docx",
-            description=(
-                "Create a new docx file with given content."
-                "Editing exisiting docx file with this tool is not recomended."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute path to target file. It should be under your current working directory.",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": (
-                            "Content to write to the file. Two line breaks in content represent new paragraph."
-                            "Table should starts with [Table], and separated with '|'."
-                            "Escape line break when you input multiple lines."
-                        ),
-                    }
-                },
-                "required": ["path", "content"]
-            }
-        ),
-        types.Tool(
-            name="edit_docx",
-            description=(
-                "Make multiple text replacements in a docx file. Accepts a list of search/replace pairs "
-                "and applies them sequentially. Since this tool is intended to edit a single part of document,"
-                "each search should matches exact part of document. Note each search matches only once."
-                "Returns a git-style diff showing the changes made. Only works within allowed directories."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Absolute path to file to edit. It should be under your current working directory."
-                    },
-                    "edits": {
-                        "type": "array",
-                        "description": "Sequence of edit.",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "search": {
-                                    "type": "string",
-                                    "description": (
-                                        "search string to find single part of the document."
-                                        "This should match exact part of document. Search string should unique in document and concise."
-                                        "Note search string matches only once."
-                                        "Escape line break when you input multiple lines."
-                                    )
-                                },
-                                "replace": {
-                                    "type": "string",
-                                    "description": (
-                                        "replacement of search seach string. Two line breaks in content represent new paragraph."
-                                        "Table should starts with [Table], and separated with '|'."
-                                        "Empty string replesents deletion."
-                                        "Escape line break when you input multiple lines."
-                                    )
-                                }
-                            },
-                            "required": ["search", "replace"]
-                        }
-                    }
-                },
-                "required": ["path", "edits"]
-            }
-        )
-    ]
+    return [READ_DOCX, EDIT_DOCX, WRITE_DOCX]
 
 @server.call_tool()
 async def call_tool(
