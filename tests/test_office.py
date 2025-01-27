@@ -81,16 +81,16 @@ async def test_edit_docx(sample_docx):
     """Test editing docx file."""
     # Test single edit
     result = await edit_docx(abs_sample_docx, [{"search": "Hello", "replace": "Hi"}])
-    assert "Hello World" in result["original"]
-    assert "Hi World" in result["modified"]
+    assert "-Hello" in result
+    assert "+Hi" in result
     
     # Test multiple edits
     result = await edit_docx(abs_sample_docx, [
         {"search": "Hi", "replace": "Hellow"},
         {"search": "World", "replace": "Everyone"}
     ])
-    assert "Hi World" in result["original"]
-    assert "Hellow Everyone" in result["modified"]
+    assert "-Hi World" in result
+    assert "+Hellow Everyone" in result
     
     # Test non-existent text
     with pytest.raises(ValueError) as exc_info:

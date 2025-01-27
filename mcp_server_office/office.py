@@ -7,6 +7,7 @@ from mcp.server.lowlevel import Server, NotificationOptions
 from mcp.server.stdio import stdio_server
 from mcp.server.models import InitializationOptions
 from mcp import types
+import difflib
 
 server = Server("office-server")
 
@@ -131,10 +132,8 @@ async def edit_docx(path: str, edits: list[Dict[str, str]]) -> Dict[str, str]:
     # Write modified content to file
     await write_docx(path, modified)
     
-    return {
-        "original": original,
-        "modified": modified
-    }
+    result = "\n".join([line for line in difflib.unified_diff(original.split("\n"), modified.split("\n"))])
+    return result
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
@@ -176,6 +175,7 @@ async def list_tools() -> list[types.Tool]:
                         "description": (
                             "Content to write to the file. Two line breaks in content represent new paragraph."
                             "Table should starts with [Table], and separated with '|'."
+                            "Escape line break when you input multiple lines."
                         ),
                     }
                 },
@@ -209,6 +209,7 @@ async def list_tools() -> list[types.Tool]:
                                         "search string to find single part of the document."
                                         "This should match exact part of document. Search string should unique in document and concise."
                                         "Note search string matches only once."
+                                        "Escape line break when you input multiple lines."
                                     )
                                 },
                                 "replace": {
@@ -217,6 +218,7 @@ async def list_tools() -> list[types.Tool]:
                                         "replacement of search seach string. Two line breaks in content represent new paragraph."
                                         "Table should starts with [Table], and separated with '|'."
                                         "Empty string replesents deletion."
+                                        "Escape line break when you input multiple lines."
                                     )
                                 }
                             },
@@ -242,7 +244,7 @@ async def call_tool(
         return [types.TextContent(type="text", text="Document created successfully")]
     elif name == "edit_docx":
         result = await edit_docx(arguments["path"], arguments["edits"])
-        return [types.TextContent(type="text", text=f"Document edited successfully\nDiff:\n{result['original']}\n--->\n{result['modified']}")]
+        return [types.TextContent(type="text", text=result)]
     raise ValueError(f"Tool not found: {name}")
 
 async def run():
