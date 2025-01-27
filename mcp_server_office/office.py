@@ -37,20 +37,19 @@ def process_track_changes(element: OxmlElement) -> str:
     text = ""
     for child in element:
         if child.tag.endswith('r'):  # Normal run
-            if child.text:
-                text += child.text
+            for run_child in child:
+                if run_child.tag.endswith('t'):
+                    text += run_child.text if run_child.text else ""
         elif child.tag.endswith('del'):  # Deletion
             deleted_text = ""
-            for run in child:
-                if run.text:
-                    deleted_text += run.text
+            for run in child.findall('.//w:delText', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
+                deleted_text += run.text if run.text else ""
             if deleted_text:
                 text += f"[削除: {deleted_text}]"
         elif child.tag.endswith('ins'):  # Insertion
             inserted_text = ""
-            for run in child:
-                if run.text:
-                    inserted_text += run.text
+            for run in child.findall('.//w:t', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
+                inserted_text += run.text if run.text else ""
             if inserted_text:
                 text += f"[追加: {inserted_text}]"
     return text
@@ -155,16 +154,37 @@ async def edit_docx(path: str, edits: list[Dict[str, str]]) -> str:
         
         for paragraph in doc.paragraphs:
             if search in paragraph.text:
-                # Create new paragraph with track changes
-                new_text = paragraph.text.replace(search, replace)
-                # Clear existing runs
+                # Find the run containing the search text
                 for run in paragraph.runs:
-                    run._element.getparent().remove(run._element)
-                # Add new run with modified text
-                run = paragraph._element.add_r()
-                run.text = new_text
-                found = True
-                break
+                    if search in run.text:
+                        # Create deletion for original text
+                        del_element = OxmlElement('w:del')
+                        del_element.set(qn('w:author'), 'Editor')
+                        del_element.set(qn('w:date'), '2024-01-27T00:00:00Z')
+                        del_run = OxmlElement('w:r')
+                        del_text = OxmlElement('w:delText')
+                        del_text.text = run.text
+                        del_run.append(del_text)
+                        del_element.append(del_run)
+                        
+                        # Create insertion for new text
+                        ins_element = OxmlElement('w:ins')
+                        ins_element.set(qn('w:author'), 'Editor')
+                        ins_element.set(qn('w:date'), '2024-01-27T00:00:00Z')
+                        ins_run = OxmlElement('w:r')
+                        ins_text = OxmlElement('w:t')
+                        ins_text.text = run.text.replace(search, replace)
+                        ins_run.append(ins_text)
+                        ins_element.append(ins_run)
+                        
+                        # Replace original run with track changes
+                        run._element.getparent().append(del_element)
+                        run._element.getparent().append(ins_element)
+                        run._element.getparent().remove(run._element)
+                        found = True
+                        break
+                if found:
+                    break
         
         if not found:
             not_found.append(search)
