@@ -83,9 +83,10 @@ async def test_read_docx_with_track_changes(sample_docx_with_track_changes):
     """Test reading docx file with track changes."""
     content = await read_docx(os.path.abspath(sample_docx_with_track_changes))
     assert "Original" in content
-    assert "[delete:  deleted]" in content
-    assert "[insert:  inserted]" in content
+    assert not "deleted" in content
+    assert "inserted" in content
 
+@pytest.mark.asyncio
 async def test_read_docx(sample_docx):
     """Test reading docx file."""
     content = await read_docx(os.path.abspath(sample_docx))
@@ -133,10 +134,10 @@ async def test_edit_docx_with_track_changes(sample_docx_with_track_changes):
     
     # Verify track changes are preserved
     content = await read_docx(abs_path)
-    assert "[delete: Original]" in content
-    assert "[insert: Modified]" in content
-    assert "[delete:  deleted]" in content
-    assert "[insert:  inserted]" in content
+    assert not "Original" in content
+    assert "Modified" in content
+    assert not "deleted" in content
+    assert "inserted" in content
 
 @pytest.fixture
 def complex_docx():
@@ -149,6 +150,8 @@ def complex_docx():
     doc.add_paragraph("a sentence that")
     doc.add_paragraph("spans multiple paragraphs")
     
+    doc.add_paragraph("Some text before table")
+    
     # Add table with text that will be edited
     table = doc.add_table(rows=2, cols=2)
     table.cell(0, 0).text = "Table"
@@ -156,7 +159,6 @@ def complex_docx():
     table.cell(1, 0).text = "More"
     table.cell(1, 1).text = "Text"
     
-    doc.add_paragraph("Some text before table")
     doc.add_paragraph("Some text after table")
     
     doc.save(path)
@@ -164,6 +166,7 @@ def complex_docx():
     if os.path.exists(path):
         os.remove(path)
 
+@pytest.mark.asyncio
 async def test_edit_docx(sample_docx):
     abs_sample_docx = os.path.abspath(sample_docx)
     
@@ -207,12 +210,14 @@ async def test_edit_docx_cross_paragraph(complex_docx):
     result = await edit_docx(abs_complex_docx, [
         {"search": "First part of\n\na sentence that\n\nspans multiple paragraphs", "replace": "The beginning of"}
     ])
-    assert "+[delete: First part of\n \n a sentence that\n \n-spans multiple paragraphs\n+spans multiple paragraphs]" in result
-    assert "[insert: The beginning of]" in result
+    assert "-First part of" in result
+    assert "-a sentence that" in result
+    assert "-spans multiple paragraphs" in result
+    assert "+The beginning of" in result
     
     # Verify content
     content = await read_docx(abs_complex_docx)
-    assert "[insert: The beginning of]" in content
+    assert "The beginning of" in content
 
 @pytest.mark.asyncio
 async def test_edit_docx_table_content(complex_docx):
