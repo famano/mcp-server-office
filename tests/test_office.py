@@ -5,6 +5,7 @@ from docx import Document
 from docx.table import Table
 from docx.oxml.shared import qn
 from docx.oxml import OxmlElement
+from docx.text.paragraph import Paragraph
 
 @pytest.fixture
 def sample_docx_with_track_changes():
@@ -137,6 +138,32 @@ async def test_edit_docx_with_track_changes(sample_docx_with_track_changes):
     assert "[delete:  deleted]" in content
     assert "[insert:  inserted]" in content
 
+@pytest.fixture
+def complex_docx():
+    """Create a sample docx file with complex content for testing cross-paragraph and table edits."""
+    path = "test_complex.docx"
+    doc = Document()
+    
+    # Add paragraphs with text that spans multiple paragraphs
+    doc.add_paragraph("First part of")
+    doc.add_paragraph("a sentence that")
+    doc.add_paragraph("spans multiple paragraphs")
+    
+    # Add table with text that will be edited
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Table"
+    table.cell(0, 1).text = "Content"
+    table.cell(1, 0).text = "More"
+    table.cell(1, 1).text = "Text"
+    
+    doc.add_paragraph("Some text before table")
+    doc.add_paragraph("Some text after table")
+    
+    doc.save(path)
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
+
 async def test_edit_docx(sample_docx):
     abs_sample_docx = os.path.abspath(sample_docx)
     
@@ -170,6 +197,42 @@ async def test_edit_docx(sample_docx):
     # Test invalid file
     with pytest.raises(ValueError):
         await edit_docx("nonexistent.docx", [{"search": "Hello", "replace": "Hi"}])
+
+@pytest.mark.asyncio
+async def test_edit_docx_cross_paragraph(complex_docx):
+    """Test editing text that spans multiple paragraphs."""
+    abs_complex_docx = os.path.abspath(complex_docx)
+    
+    # Test editing text that spans paragraphs
+    result = await edit_docx(abs_complex_docx, [
+        {"search": "First part of\n\na sentence that\n\nspans multiple paragraphs", "replace": "The beginning of"}
+    ])
+    assert "+[delete: First part of\n \n a sentence that\n \n-spans multiple paragraphs\n+spans multiple paragraphs]" in result
+    assert "[insert: The beginning of]" in result
+    
+    # Verify content
+    content = await read_docx(abs_complex_docx)
+    assert "[insert: The beginning of]" in content
+
+@pytest.mark.asyncio
+async def test_edit_docx_table_content(complex_docx):
+    """Test editing text within table cells."""
+    abs_complex_docx = os.path.abspath(complex_docx)
+    
+    # Test editing table content
+    result = await edit_docx(abs_complex_docx, [
+        {"search": "Table | Content", "replace": "Modified | Cell"}
+    ])
+    assert "-Table | Content" in result
+    assert "+Modified | Cell" in result
+    
+    # Test editing text that includes table and regular paragraph
+    result = await edit_docx(abs_complex_docx, [
+        {"search": "Some text before table\n\n[Table]\nModified | Cell\nMore | Text\n\nSome text after", 
+         "replace": "Updated content with table"}
+    ])
+    assert "-Some text before table" in result
+    assert "+Updated content with table" in result
 
 def test_extract_table_text():
     """Test table text extraction."""
