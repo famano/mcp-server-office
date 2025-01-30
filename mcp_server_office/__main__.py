@@ -1,5 +1,9 @@
 from . import run
 import asyncio
+import sys
+
+def main():
+    asyncio.run(run())
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    sys.exit(main())
