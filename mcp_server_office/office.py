@@ -11,7 +11,7 @@ import difflib
 from mcp_server_office.tools import READ_DOCX, WRITE_DOCX, EDIT_DOCX
 import uuid
 
-server = Server("office-server")
+server = Server("office-file-server")
 
 async def validate_path(path: str) -> bool:
     if not os.path.isabs(path):
@@ -189,7 +189,7 @@ async def run():
             write_stream,
             InitializationOptions(
                 server_name="office-file-server",
-                server_version="0.1.0",
+                server_version="0.1.1",
                 capabilities=server.get_capabilities(
                     notification_options=NotificationOptions(),
                     experimental_capabilities={},
