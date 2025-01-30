@@ -4,15 +4,18 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-server-office"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.1.1"
+description = "A Model Context Protocol server providing tools to read/write docx files"
+authors = [{name = "famano"}]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "docx2python>=3.3.0",
     "mcp[cli]>=1.2.0",
     "python-docx>=1.1.2",
 ]
+
+[project.scripts]
+mcp-server-office = "mcp_server_office.__main__:main"
 
 [project.optional-dependencies]
 dev = [
