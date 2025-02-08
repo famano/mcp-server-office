@@ -21,6 +21,46 @@ READ_DOCX = types.Tool(
     }
 )
 
+EDIT_DOCX_INSERT = types.Tool(
+    name="edit_docx_insert",
+    description=(
+        "Insert new paragraphs into a docx file. "
+        "Accepts a list of inserts with text and optional paragraph index. "
+        "Each insert creates a new paragraph at the specified position. "
+        "If paragraph_index is not specified, the paragraph is added at the end. "
+        "When multiple inserts target the same paragraph_index, they are inserted in order. "
+        "Returns a git-style diff showing the changes made."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Absolute path to file to edit. It should be under your current working directory."
+            },
+            "inserts": {
+                "type": "array",
+                "description": "Sequence of paragraphs to insert.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "Text to insert as a new paragraph."
+                        },
+                        "paragraph_index": {
+                            "type": "integer",
+                            "description": "0-based index of the paragraph before which to insert. If not specified, insert at the end."
+                        }
+                    },
+                    "required": ["text"]
+                }
+            }
+        },
+        "required": ["path", "inserts"]
+    }
+)
+
 WRITE_DOCX = types.Tool(
     name="write_docx",
     description=(

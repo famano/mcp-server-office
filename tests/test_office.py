@@ -1,6 +1,6 @@
 import os
 import pytest
-from mcp_server_office.office import validate_path, read_docx, write_docx, edit_docx, extract_table_text
+from mcp_server_office.office import validate_path, read_docx, write_docx, edit_docx_paragraph as edit_docx, edit_docx_insert, extract_table_text
 from docx import Document
 from docx.table import Table
 from docx.oxml.shared import qn
@@ -400,3 +400,91 @@ def test_extract_table_text():
     result = extract_table_text(table)
     assert "X1 | Y1" in result
     assert "X2 | Y2" in result
+
+@pytest.mark.asyncio
+async def test_edit_docx_insert_basic(sample_docx):
+    """Test basic paragraph insertion."""
+    abs_path = os.path.abspath(sample_docx)
+    
+    result = await edit_docx_insert(abs_path, [
+        {"text": "Inserted Text", "paragraph_index": 1}
+    ])
+    
+    # 変更を確認
+    content = await read_docx(abs_path)
+    assert "Inserted Text" in content
+    assert "+Inserted Text" in result
+
+@pytest.mark.asyncio
+async def test_edit_docx_insert_multiple(sample_docx):
+    """Test inserting multiple paragraphs at different positions."""
+    abs_path = os.path.abspath(sample_docx)
+    
+    result = await edit_docx_insert(abs_path, [
+        {"text": "First Insert", "paragraph_index": 0},
+        {"text": "Second Insert", "paragraph_index": 2}
+    ])
+    
+    content = await read_docx(abs_path)
+    assert "First Insert" in content
+    assert "Second Insert" in content
+    assert content.index("First Insert") < content.index("Second Insert")
+
+@pytest.mark.asyncio
+async def test_edit_docx_insert_same_position(sample_docx):
+    """Test inserting multiple paragraphs at the same position."""
+    abs_path = os.path.abspath(sample_docx)
+    
+    result = await edit_docx_insert(abs_path, [
+        {"text": "First Same Position"},
+        {"text": "Second Same Position"},
+        {"text": "Third Same Position"}
+    ])
+    
+    content = await read_docx(abs_path)
+    # 指定順序で挿入されていることを確認
+    assert content.index("First Same Position") < content.index("Second Same Position")
+    assert content.index("Second Same Position") < content.index("Third Same Position")
+
+@pytest.mark.asyncio
+async def test_edit_docx_insert_at_end(sample_docx):
+    """Test inserting paragraph at the end of document."""
+    abs_path = os.path.abspath(sample_docx)
+    
+    result = await edit_docx_insert(abs_path, [
+        {"text": "End of Document"}
+    ])
+    
+    content = await read_docx(abs_path)
+    assert "End of Document" in content
+    assert content.rindex("End of Document") > content.rindex("Goodbye World")
+
+@pytest.mark.asyncio
+async def test_edit_docx_insert_before_table(complex_docx):
+    """Test inserting paragraph before table."""
+    abs_path = os.path.abspath(complex_docx)
+    
+    result = await edit_docx_insert(abs_path, [
+        {"text": "Before Table Text", "paragraph_index": 4}
+    ])
+    
+    content = await read_docx(abs_path)
+    assert "Before Table Text" in content
+    # テーブルの前に挿入されていることを確認
+    table_index = content.index("[Table]")
+    insert_index = content.index("Before Table Text")
+    assert insert_index < table_index
+
+@pytest.mark.asyncio
+async def test_edit_docx_insert_errors(sample_docx):
+    """Test error cases for paragraph insertion."""
+    # 存在しないファイル
+    with pytest.raises(ValueError) as exc_info:
+        await edit_docx_insert(os.path.abspath("nonexistent.docx"), [{"text": "Test"}])
+    assert "File not found" in str(exc_info.value)
+    
+    # 範囲外のインデックス
+    abs_path = os.path.abspath(sample_docx)
+    with pytest.raises(ValueError) as exc_info:
+        await edit_docx_insert(abs_path, [{"text": "Test", "paragraph_index": 999}])
+    assert "Paragraph index out of range" in str(exc_info.value)

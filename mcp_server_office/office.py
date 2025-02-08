@@ -8,7 +8,7 @@ from mcp.server.stdio import stdio_server
 from mcp.server.models import InitializationOptions
 from mcp import types
 import difflib
-from mcp_server_office.tools import READ_DOCX, WRITE_DOCX, EDIT_DOCX_PARAGRAPH
+from mcp_server_office.tools import READ_DOCX, WRITE_DOCX, EDIT_DOCX_PARAGRAPH, EDIT_DOCX_INSERT
 
 # WordML namespace constants
 WORDML_NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
@@ -148,8 +148,82 @@ async def write_docx(path: str, content: str) -> None:
     
     document.save(path)
 
-async def edit_docx_insert():
-    pass
+async def edit_docx_insert(path: str, inserts: list[Dict[str, str | int]]) -> str:
+    """Insert new paragraphs into a docx file.
+    
+    Args:
+        path: path to target docx file
+        inserts: list of dictionaries containing text and optional paragraph_index
+            [{'text': 'text to insert', 'paragraph_index': 0}, ...]
+            text: text to insert as a new paragraph (required)
+            paragraph_index: 0-based index of the paragraph before which to insert (optional)
+    Returns:
+        str: A git-style diff showing the changes made
+    """
+    if not await validate_path(path):
+        raise ValueError(f"Not a docx file: {path}")
+    
+    doc = Document(path)
+    original = await read_docx(path)
+
+    # パラグラフとテーブルを順番に収集
+    elements = []
+    paragraph_count = 0
+    table_count = 0
+    for element in doc._body._body:
+        if element.tag == W_P:
+            elements.append(('p', doc.paragraphs[paragraph_count]))
+            paragraph_count += 1
+        elif element.tag == W_TBL:
+            elements.append(('tbl', doc.tables[table_count]))
+            table_count += 1
+
+    # 挿入位置でソート（同じ位置への挿入は指定順を保持）
+    sorted_inserts = sorted(
+        enumerate(inserts),
+        key=lambda x: (x[1].get('paragraph_index', float('inf')), x[0])
+    )
+
+    # 各挿入を処理
+    for _, insert in sorted_inserts:
+        text = insert['text']
+        paragraph_index = insert.get('paragraph_index')
+
+        # 新しい段落を作成
+        new_paragraph = doc.add_paragraph(text)
+
+        if paragraph_index is None:
+            # 文書の最後に追加
+            doc.element.body.append(new_paragraph._element)
+            elements.append(('p', new_paragraph))
+        elif paragraph_index >= len(elements):
+            raise ValueError(f"Paragraph index out of range: {paragraph_index}")
+        else:
+            # 指定位置に挿入
+            element_type, element = elements[paragraph_index]
+            if element_type == 'p':
+                element._element.addprevious(new_paragraph._element)
+            elif element_type == 'tbl':
+                element._element.addprevious(new_paragraph._element)
+            
+            # elementsリストを更新（後続の挿入のために必要）
+            elements.insert(paragraph_index, ('p', new_paragraph))
+
+    doc.save(path)
+    
+    # 差分の生成
+    modified = await read_docx(path)
+    diff_lines = []
+    original_lines = [line for line in original.split("\n") if line.strip()]
+    modified_lines = [line for line in modified.split("\n") if line.strip()]
+    
+    for line in difflib.unified_diff(original_lines, modified_lines, n=0):
+        if line.startswith('---') or line.startswith('+++'):
+            continue
+        if line.startswith('-') or line.startswith('+'):
+            diff_lines.append(line)
+    
+    return "\n".join(diff_lines) if diff_lines else ""
 
 async def edit_docx_paragraph(path: str, edits: list[Dict[str, str | int]]) -> str:
     """Edit docx file by replacing text.
@@ -283,7 +357,7 @@ async def edit_docx_paragraph(path: str, edits: list[Dict[str, str | int]]) -> s
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    return [READ_DOCX, EDIT_DOCX_PARAGRAPH, WRITE_DOCX]
+    return [READ_DOCX, EDIT_DOCX_PARAGRAPH, WRITE_DOCX, EDIT_DOCX_INSERT]
 
 @server.call_tool()
 async def call_tool(
@@ -298,6 +372,9 @@ async def call_tool(
         return [types.TextContent(type="text", text="Document created successfully")]
     elif name == "edit_docx_paragraph":
         result = await edit_docx_paragraph(arguments["path"], arguments["edits"])
+        return [types.TextContent(type="text", text=result)]
+    elif name == "edit_docx_insert":
+        result = await edit_docx_insert(arguments["path"], arguments["inserts"])
         return [types.TextContent(type="text", text=result)]
     raise ValueError(f"Tool not found: {name}")
 
