@@ -7,7 +7,7 @@ READ_DOCX = types.Tool(
         "Use this tool when you want to read file endswith '.docx'."
         "Paragraphs are separated with two line breaks."
         "This tool convert images into placeholder [Image]."
-        "[delete: xxx] and [insert: xxx] means tracking changes of file."
+        "'--- Paragraph [number] ---' is indicator of each paragraph."
     ),
     inputSchema={
         "type": "object",

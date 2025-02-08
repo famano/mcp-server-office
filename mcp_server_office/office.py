@@ -10,6 +10,14 @@ from mcp import types
 import difflib
 from mcp_server_office.tools import READ_DOCX, WRITE_DOCX, EDIT_DOCX
 
+# WordML namespace constants
+WORDML_NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+W_P = f"{{{WORDML_NS['w']}}}p"    # paragraph
+W_TBL = f"{{{WORDML_NS['w']}}}tbl"  # table
+W_R = f"{{{WORDML_NS['w']}}}r"    # run
+W_T = f"{{{WORDML_NS['w']}}}t"    # text
+W_DRAWING = f"{{{WORDML_NS['w']}}}drawing"  # drawing
+
 server = Server("office-server")
 
 async def validate_path(path: str) -> bool:
@@ -55,13 +63,13 @@ def process_track_changes(element: OxmlElement) -> str:
     """Process track changes in a paragraph element."""
     text = ""
     for child in element:
-        if child.tag.endswith('r'):  # Normal run
+        if child.tag == W_R:  # Normal run
             for run_child in child:
-                if run_child.tag.endswith('t'):
+                if run_child.tag == W_T:
                     text += run_child.text if run_child.text else ""
         elif child.tag.endswith('ins'):  # Insertion
             inserted_text = ""
-            for run in child.findall('.//w:t', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
+            for run in child.findall('.//w:t', WORDML_NS):
                 inserted_text += run.text if run.text else ""
             if inserted_text:
                 text += inserted_text
@@ -87,25 +95,35 @@ async def read_docx(path: str) -> str:
     # 全要素を順番に処理
     for element in document._body._body:
         # パラグラフの処理
-        if element.tag.endswith('p'):
+        if element.tag == W_P:
             paragraph = document.paragraphs[paragraph_index]
             paragraph_index += 1
             # 画像のチェック
-            if paragraph._element.findall('.//w:drawing', {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}):
+            if paragraph._element.findall(f'.//{W_DRAWING}', WORDML_NS):
                 content.append("[Image]")
             # テキストのチェック
             else:
                 text = process_track_changes(paragraph._element)
                 if text.strip():
                     content.append(text)
+                else:
+                    # 空行を抜くと編集時に困るので、空行でも追加
+                    content.append("")
         # テーブルの処理
-        elif element.tag.endswith('tbl'):
+        elif element.tag == W_TBL:
             table = document.tables[table_index]
             table_index += 1
             table_text = extract_table_text(table)
             content.append(f"[Table]\n{table_text}")
 
-    return "\n\n".join(content)
+    separator = [f"--- Paragraph {i} ---" for i in range(len(content))]
+    
+    result = []
+    for i, p in enumerate(content):
+        result.append(separator[i])
+        result.append(p)
+        
+    return "\n".join(result)
 
 async def write_docx(path: str, content: str) -> None:
     """Create a new docx file with the given content.
@@ -155,10 +173,10 @@ async def edit_docx(path: str, edits: list[Dict[str, str | int]]) -> str:
     paragraph_count = 0
     table_count = 0
     for element in doc._body._body:
-        if element.tag.endswith('p'):
+        if element.tag == W_P:
             elements.append(('p', doc.paragraphs[paragraph_count]))
             paragraph_count += 1
-        elif element.tag.endswith('tbl'):
+        elif element.tag == W_TBL:
             elements.append(('tbl', doc.tables[table_count]))
             table_count += 1
 
@@ -184,10 +202,11 @@ async def edit_docx(path: str, edits: list[Dict[str, str | int]]) -> str:
             # Store original XML element and get first run's properties
             original_element = paragraph._element
             first_run_props = None
-            for child in original_element:
-                if child.tag.endswith('r') and child.rPr is not None:
-                    first_run_props = child.rPr
-                    break
+            runs = original_element.findall(f'.//w:r', WORDML_NS)
+            if runs:
+                first_run = runs[0]
+                if hasattr(first_run, 'rPr'):
+                    first_run_props = first_run.rPr
             
             # Create new paragraph with the entire text
             new_paragraph = doc.add_paragraph()
@@ -231,33 +250,6 @@ async def edit_docx(path: str, edits: list[Dict[str, str | int]]) -> str:
                     doc.element.body.insert(0, new_table._element)
             else:
                 not_found.append(f"'{search}' in table at paragraph {paragraph_index}")
-            
-            """
-            for row in table.rows:
-                row_text = " | ".join(process_track_changes(cell._element).strip() for cell in row.cells)
-                if search in row_text:
-                    for cell in row.cells:
-                        if search in cell.text:
-                            # Get first run's properties from the first cell
-                            first_run_props = None
-                            for paragraph in cell.paragraphs:
-                                for run in paragraph.runs:
-                                    if run._element.rPr is not None:
-                                        first_run_props = run._element.rPr
-                                        break
-                                if first_run_props is not None:
-                                    break
-                            
-                            # Replace text
-                            new_text = cell.text.replace(search, replace)
-                            cell.text = ""  # Clear cell
-                            
-                            # Add new run with first run's properties
-                            new_run = cell.paragraphs[0].add_run(new_text)
-                            if first_run_props is not None:
-                                new_run._element.append(first_run_props)
-                    found = True
-            """
             
     if not_found:
         raise ValueError(f"Search text not found: {', '.join(not_found)}")
