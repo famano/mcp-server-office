@@ -216,7 +216,7 @@ async def edit_docx(path: str, edits: list[Dict[str, str | int]]) -> str:
                 new_paragraph._p.append(original_element.pPr)
             
             # Replace text and create a single run with first run's properties
-            new_text = process_track_changes(paragraph._element).replace(search, replace)
+            new_text = process_track_changes(paragraph._element).replace(search, replace, 1)
             new_run = new_paragraph.add_run(new_text)
             if first_run_props is not None:
                 new_run._element.append(first_run_props)
@@ -230,8 +230,13 @@ async def edit_docx(path: str, edits: list[Dict[str, str | int]]) -> str:
             table_paragraph = table._element.getprevious()
             table_text = extract_table_text(table)
             if search in table_text:
-                # 既存tableを削除
-                table._element.getparent().remove(table._element)
+                # 既存tableを削除（親要素の参照を保持して安全に削除）
+                parent = table._element.getparent()
+                if parent is not None:
+                    parent.remove(table._element)
+                else:
+                    # テーブルが文書のルート要素である場合（先頭の場合などにおそらく必要）
+                    doc.element.body.remove(table._element)
                 
                 # Get first run's properties from the first cell
                 first_run_props = None
@@ -241,8 +246,9 @@ async def edit_docx(path: str, edits: list[Dict[str, str | int]]) -> str:
                             first_run_props = run._element.rPr
                             break
                 
-                new_text = table_text.replace(search, replace)
+                new_text = table_text.replace(search, replace, 1)
                 new_table = create_table_from_text(new_text, first_run_props)
+                elements[paragraph_index] = ("tbl", new_table) # これがないと複数編集時に、あとの編集でtableがみつからなくなる
                 if table_paragraph is not None:
                     table_paragraph.addnext(new_table._element)
                 else:

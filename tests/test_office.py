@@ -248,10 +248,145 @@ async def test_edit_docx_table_content(complex_docx):
     
     # Test editing table content
     result = await edit_docx(abs_complex_docx, [
-        {"paragraph_index": 4,"search": "Table | Content", "replace": "Modified | Cell"}
+        {"paragraph_index": 4,"search": "Table | Content", "replace": "Modified | Cell"},
+        {"paragraph_index": 4,"search": "More | Text", "replace": "Modification | Two"},
     ])
     assert "-Table | Content" in result
     assert "+Modified | Cell" in result
+    assert "-More | Text" in result
+    assert "+Modification | Two" in result
+
+
+@pytest.fixture
+def table_at_start_docx():
+    """Create a docx file that starts with a table."""
+    path = "test_table_at_start.docx"
+    doc = Document()
+    
+    # Add table at the start
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Start1"
+    table.cell(0, 1).text = "Start2"
+    table.cell(1, 0).text = "Start3"
+    table.cell(1, 1).text = "Start4"
+    
+    # Add some text after table
+    doc.add_paragraph("Text after table")
+    
+    doc.save(path)
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
+
+@pytest.fixture
+def table_after_empty_paragraph_docx():
+    """Create a docx file with empty paragraph before table."""
+    path = "test_table_after_empty.docx"
+    doc = Document()
+    
+    # Add empty paragraph
+    doc.add_paragraph("")
+    
+    # Add table after empty paragraph
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Empty1"
+    table.cell(0, 1).text = "Empty2"
+    table.cell(1, 0).text = "Empty3"
+    table.cell(1, 1).text = "Empty4"
+    
+    doc.save(path)
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
+
+@pytest.mark.asyncio
+async def test_edit_docx_table_at_start(table_at_start_docx):
+    """Test editing table that appears at the start of document."""
+    abs_path = os.path.abspath(table_at_start_docx)
+    
+    # Test editing the table content
+    result = await edit_docx(abs_path, [
+        {"paragraph_index": 0, "search": "Start1 | Start2", "replace": "Modified1 | Modified2"}
+    ])
+    
+    # Verify changes
+    assert "-Start1 | Start2" in result
+    assert "+Modified1 | Modified2" in result
+    
+    # Verify the document structure is maintained
+    content = await read_docx(abs_path)
+    assert "Text after table" in content  # Verify text after table is preserved
+
+@pytest.mark.asyncio
+async def test_edit_docx_table_after_empty_paragraph(table_after_empty_paragraph_docx):
+    """Test editing table that appears after an empty paragraph."""
+    abs_path = os.path.abspath(table_after_empty_paragraph_docx)
+    
+    # Test editing the table content
+    result = await edit_docx(abs_path, [
+        {"paragraph_index": 1, "search": "Empty1 | Empty2", "replace": "Modified1 | Modified2"}
+    ])
+    
+    # Verify changes
+    assert "-Empty1 | Empty2" in result
+    assert "+Modified1 | Modified2" in result
+    
+    # Verify the document structure is maintained
+    content = await read_docx(abs_path)
+    assert "Modified1" in content
+    assert "Modified2" in content
+
+@pytest.fixture
+def deleted_text_before_table_docx():
+    """Create a docx file with deleted text in a paragraph before table."""
+    path = "test_deleted_text_before_table.docx"
+    doc = Document()
+    
+    # 削除された文字を含む段落を追加
+    paragraph = doc.add_paragraph()
+    # 削除マークを付けたテキストを追加
+    del_element = OxmlElement('w:del')
+    del_element.set(qn('w:author'), 'Test Author')
+    del_element.set(qn('w:date'), '2024-01-27T00:00:00Z')
+    del_run = OxmlElement('w:r')
+    del_text = OxmlElement('w:delText')
+    del_text.text = "This text is deleted"
+    del_run.append(del_text)
+    del_element.append(del_run)
+    paragraph._element.append(del_element)
+    
+    # テーブルを追加
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Test1"
+    table.cell(0, 1).text = "Test2"
+    table.cell(1, 0).text = "Test3"
+    table.cell(1, 1).text = "Test4"
+    
+    doc.save(path)
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
+
+@pytest.mark.asyncio
+async def test_edit_docx_table_after_deleted_text(deleted_text_before_table_docx):
+    """Test editing table that appears after a paragraph with deleted text."""
+    abs_path = os.path.abspath(deleted_text_before_table_docx)
+    
+    # テーブルの内容を編集
+    result = await edit_docx(abs_path, [
+        {"paragraph_index": 1, "search": "Test1 | Test2", "replace": "Modified1 | Modified2"}
+    ])
+    
+    # 変更を確認
+    assert "-Test1 | Test2" in result
+    assert "+Modified1 | Modified2" in result
+    
+    # ドキュメント構造が維持されていることを確認
+    content = await read_docx(abs_path)
+    assert "Modified1" in content
+    assert "Modified2" in content
+    # 削除されたテキストが表示されないことを確認
+    assert "This text is deleted" not in content
 
 def test_extract_table_text():
     """Test table text extraction."""
