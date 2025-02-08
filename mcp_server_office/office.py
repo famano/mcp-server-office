@@ -8,7 +8,7 @@ from mcp.server.stdio import stdio_server
 from mcp.server.models import InitializationOptions
 from mcp import types
 import difflib
-from mcp_server_office.tools import READ_DOCX, WRITE_DOCX, EDIT_DOCX
+from mcp_server_office.tools import READ_DOCX, WRITE_DOCX, EDIT_DOCX_PARAGRAPH
 
 # WordML namespace constants
 WORDML_NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
@@ -148,7 +148,10 @@ async def write_docx(path: str, content: str) -> None:
     
     document.save(path)
 
-async def edit_docx(path: str, edits: list[Dict[str, str | int]]) -> str:
+async def edit_docx_insert():
+    pass
+
+async def edit_docx_paragraph(path: str, edits: list[Dict[str, str | int]]) -> str:
     """Edit docx file by replacing text.
     
     Args:
@@ -280,7 +283,7 @@ async def edit_docx(path: str, edits: list[Dict[str, str | int]]) -> str:
 
 @server.list_tools()
 async def list_tools() -> list[types.Tool]:
-    return [READ_DOCX, EDIT_DOCX, WRITE_DOCX]
+    return [READ_DOCX, EDIT_DOCX_PARAGRAPH, WRITE_DOCX]
 
 @server.call_tool()
 async def call_tool(
@@ -293,8 +296,8 @@ async def call_tool(
     elif name == "write_docx":
         await write_docx(arguments["path"], arguments["content"])
         return [types.TextContent(type="text", text="Document created successfully")]
-    elif name == "edit_docx":
-        result = await edit_docx(arguments["path"], arguments["edits"])
+    elif name == "edit_docx_paragraph":
+        result = await edit_docx_paragraph(arguments["path"], arguments["edits"])
         return [types.TextContent(type="text", text=result)]
     raise ValueError(f"Tool not found: {name}")
 

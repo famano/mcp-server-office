@@ -47,8 +47,8 @@ WRITE_DOCX = types.Tool(
     }
 )
 
-EDIT_DOCX = types.Tool(
-    name="edit_docx",
+EDIT_DOCX_PARAGRAPH = types.Tool(
+    name="edit_docx_paragraph",
     description=(
         "Make text replacements in specified paragraphs of a docx file. "
         "Accepts a list of edits with paragraph index and search/replace pairs. "
