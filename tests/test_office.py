@@ -130,7 +130,7 @@ async def test_write_docx():
 async def test_edit_docx_with_track_changes(sample_docx_with_track_changes):
     """Test editing docx file with track changes."""
     abs_path = os.path.abspath(sample_docx_with_track_changes)
-    result = await edit_docx(abs_path, [{"search": "Original", "replace": "Modified"}])
+    await edit_docx(abs_path, [{"paragraph_index": 0,"search": "Original", "replace": "Modified"}])
     
     # Verify track changes are preserved
     content = await read_docx(abs_path)
@@ -166,58 +166,80 @@ def complex_docx():
     if os.path.exists(path):
         os.remove(path)
 
+@pytest.fixture
+def formatted_docx():
+    """Create a sample docx file with formatted text for testing."""
+    path = "test_formatted.docx"
+    doc = Document()
+    
+    # Add paragraph with formatted text
+    paragraph = doc.add_paragraph()
+    run = paragraph.add_run("Bold")
+    run.bold = True
+    run = paragraph.add_run(" and ")
+    run = paragraph.add_run("Italic")
+    run.italic = True
+    run = paragraph.add_run(" text")
+    
+    doc.save(path)
+    yield path
+    if os.path.exists(path):
+        os.remove(path)
+
 @pytest.mark.asyncio
 async def test_edit_docx(sample_docx):
     abs_sample_docx = os.path.abspath(sample_docx)
     
-    """Test editing docx file."""
-    # Test single edit
-    result = await edit_docx(abs_sample_docx, [{"search": "Hello", "replace": "Hi"}])
+    """Test editing docx file with paragraph index."""
+    # Test single edit with paragraph index
+    result = await edit_docx(abs_sample_docx, [{"paragraph_index": 0, "search": "Hello", "replace": "Hi"}])
     assert "-Hello" in result
     assert "+Hi" in result
     
-    # Test multiple edits
+    # Test multiple edits in different paragraphs
     result = await edit_docx(abs_sample_docx, [
-        {"search": "Hi", "replace": "Hellow"},
-        {"search": "World", "replace": "Everyone"}
+        {"paragraph_index": 0, "search": "Hi", "replace": "Hellow"},
+        {"paragraph_index": 2, "search": "Goodbye", "replace": "Bye"}
     ])
-    assert "-Hi World" in result
-    assert "+Hellow Everyone" in result
+    assert "-Hi" in result
+    assert "+Hellow" in result
+    assert "-Goodbye" in result
+    assert "+Bye" in result
     
-    # Test non-existent text
+    # Test non-existent text in paragraph
     with pytest.raises(ValueError) as exc_info:
-        await edit_docx(abs_sample_docx, [{"search": "NonexistentText", "replace": "NewText"}])
-    assert "Search text not found: NonexistentText" in str(exc_info.value)
+        await edit_docx(abs_sample_docx, [{"paragraph_index": 0, "search": "NonexistentText", "replace": "NewText"}])
+    assert "'NonexistentText' in paragraph 0" in str(exc_info.value)
     
-    # Test multiple edits with one non-existent
+    # Test invalid paragraph index
     with pytest.raises(ValueError) as exc_info:
-        await edit_docx(abs_sample_docx, [
-            {"search": "Hello", "replace": "Hi"},
-            {"search": "NonexistentText", "replace": "NewText"}
-        ])
-    assert "Search text not found: NonexistentText" in str(exc_info.value)
+        await edit_docx(abs_sample_docx, [{"paragraph_index": 999, "search": "Hello", "replace": "Hi"}])
+    assert "Paragraph index out of range: 999" in str(exc_info.value)
     
     # Test invalid file
     with pytest.raises(ValueError):
-        await edit_docx("nonexistent.docx", [{"search": "Hello", "replace": "Hi"}])
+        await edit_docx("nonexistent.docx", [{"paragraph_index": 0, "search": "Hello", "replace": "Hi"}])
 
 @pytest.mark.asyncio
-async def test_edit_docx_cross_paragraph(complex_docx):
-    """Test editing text that spans multiple paragraphs."""
-    abs_complex_docx = os.path.abspath(complex_docx)
+async def test_edit_docx_format_preservation(formatted_docx):
+    """Test that formatting is preserved when editing text."""
+    abs_formatted_docx = os.path.abspath(formatted_docx)
     
-    # Test editing text that spans paragraphs
-    result = await edit_docx(abs_complex_docx, [
-        {"search": "First part of\n\na sentence that\n\nspans multiple paragraphs", "replace": "The beginning of"}
+    # Edit text while preserving bold formatting
+    result = await edit_docx(abs_formatted_docx, [
+        {"paragraph_index": 0, "search": "Bold and Italic text", "replace": "Modified text"}
     ])
-    assert "-First part of" in result
-    assert "-a sentence that" in result
-    assert "-spans multiple paragraphs" in result
-    assert "+The beginning of" in result
     
-    # Verify content
-    content = await read_docx(abs_complex_docx)
-    assert "The beginning of" in content
+    # Verify content was changed
+    assert "-Bold and Italic text" in result
+    assert "+Modified text" in result
+    
+    # Verify formatting was preserved by checking the document directly
+    doc = Document(abs_formatted_docx)
+    paragraph = doc.paragraphs[0]
+    assert len(paragraph.runs) == 1  # Should be consolidated into a single run
+    run = paragraph.runs[0]
+    assert run.bold  # Should inherit bold formatting from first run
 
 @pytest.mark.asyncio
 async def test_edit_docx_table_content(complex_docx):
@@ -226,18 +248,10 @@ async def test_edit_docx_table_content(complex_docx):
     
     # Test editing table content
     result = await edit_docx(abs_complex_docx, [
-        {"search": "Table | Content", "replace": "Modified | Cell"}
+        {"paragraph_index": 4,"search": "Table | Content", "replace": "Modified | Cell"}
     ])
     assert "-Table | Content" in result
     assert "+Modified | Cell" in result
-    
-    # Test editing text that includes table and regular paragraph
-    result = await edit_docx(abs_complex_docx, [
-        {"search": "Some text before table\n\n[Table]\nModified | Cell\nMore | Text\n\nSome text after", 
-         "replace": "Updated content with table"}
-    ])
-    assert "-Some text before table" in result
-    assert "+Updated content with table" in result
 
 def test_extract_table_text():
     """Test table text extraction."""
