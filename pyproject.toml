@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-server-office"
-version = "0.1.1"
+version = "0.2.0"
 description = "A Model Context Protocol server providing tools to read/write docx files"
 authors = [{name = "famano"}]
 readme = "README.md"
