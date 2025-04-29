@@ -1,6 +1,16 @@
 # MCP Server Office
 
+[![smithery badge](https://smithery.ai/badge/@famano/mcp-server-office)](https://smithery.ai/server/@famano/mcp-server-office)
+
 A Model Context Protocol (MCP) server providing tools to read/write Microsoft Word (docx) files.
+
+### Installing via Smithery
+
+To install Server Office for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@famano/mcp-server-office):
+
+```bash
+npx -y @smithery/cli install @famano/mcp-server-office --client claude
+```
 
 ## Usage
 
@@ -62,7 +72,17 @@ uvx mcp-server-office
 
 # MCP Server Office (日本語)
 
+[![smithery badge](https://smithery.ai/badge/@famano/mcp-server-office)](https://smithery.ai/server/@famano/mcp-server-office)
+
 Microsoft Word (docx) ファイルの読み書きを提供するModel Context Protocol (MCP) サーバーです。
+
+### Smitheryによるインストール
+
+[Smithery](https://smithery.ai/server/@famano/mcp-server-office)経由でClaude DesktopにServer Officeを自動インストールするには:
+
+```bash
+npx -y @smithery/cli install @famano/mcp-server-office --client claude
+```
 
 ## 使用方法
 
